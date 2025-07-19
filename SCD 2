@@ -1,0 +1,26 @@
+CREATE PROCEDURE usp_SCD2_MergeCustomer
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    MERGE DimCustomer AS Target
+    USING StgCustomer AS Source
+    ON Target.CustomerID = Source.CustomerID AND Target.IsCurrent = 'Y'
+    WHEN MATCHED AND (
+        ISNULL(Target.CustomerName, '') <> ISNULL(Source.CustomerName, '') OR
+        ISNULL(Target.Email, '') <> ISNULL(Source.Email, '') OR
+        ISNULL(Target.City, '') <> ISNULL(Source.City, '')
+    )
+        THEN UPDATE SET
+            Target.EndDate = GETDATE(),
+            Target.IsCurrent = 'N'
+    WHEN NOT MATCHED BY TARGET
+        THEN INSERT (
+            CustomerID, CustomerName, Email, City,
+            StartDate, EndDate, IsCurrent
+        ) VALUES (
+            Source.CustomerID, Source.CustomerName, Source.Email, Source.City,
+            GETDATE(), '9999-12-31', 'Y'
+        );
+END
+GO
