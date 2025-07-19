@@ -1,0 +1,14 @@
+CREATE PROCEDURE usp_SCD0_InsertCustomer
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Insert only new records that do not exist in DimCustomer
+    INSERT INTO DimCustomer (CustomerID, CustomerName, JoinDate, FirstPurchase)
+    SELECT stg.CustomerID, stg.CustomerName, stg.JoinDate, stg.FirstPurchase
+    FROM StgCustomer stg
+    LEFT JOIN DimCustomer dim
+        ON stg.CustomerID = dim.CustomerID
+    WHERE dim.CustomerID IS NULL;
+END
+GO
