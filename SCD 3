@@ -1,0 +1,30 @@
+CREATE PROCEDURE usp_SCD3_UpdateCustomer
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Update the dimension table where tracked attributes (like Curr_State) have changed
+    UPDATE DimCustomer
+    SET
+        Prev_State = Curr_State,
+        Curr_State = stg.Curr_State,
+        StateChangeDate = GETDATE()
+    FROM DimCustomer dim
+    INNER JOIN StgCustomer stg
+        ON dim.CustomerID = stg.CustomerID
+    WHERE ISNULL(dim.Curr_State, '') <> ISNULL(stg.Curr_State, '');
+
+    -- Insert new records missing from the dimension table
+    INSERT INTO DimCustomer (CustomerID, CustomerName, Curr_State, Prev_State, StateChangeDate)
+    SELECT
+        stg.CustomerID,
+        stg.CustomerName,
+        stg.Curr_State,
+        NULL,  -- No previous state for new customers
+        GETDATE()
+    FROM StgCustomer stg
+    LEFT JOIN DimCustomer dim
+        ON stg.CustomerID = dim.CustomerID
+    WHERE dim.CustomerID IS NULL;
+END
+GO
