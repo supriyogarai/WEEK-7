@@ -1,0 +1,36 @@
+CREATE PROCEDURE usp_SCD4_UpdateCustomer
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Insert existing records with changes into HistCustomer table (archive old values)
+    INSERT INTO HistCustomer (CustomerID, CustomerName, Address, UpdateDate)
+    SELECT dim.CustomerID, dim.CustomerName, dim.Address, GETDATE()
+    FROM DimCustomer dim
+    INNER JOIN StgCustomer stg
+        ON dim.CustomerID = stg.CustomerID
+    WHERE
+        ISNULL(dim.CustomerName, '') <> ISNULL(stg.CustomerName, '') OR
+        ISNULL(dim.Address, '') <> ISNULL(stg.Address, '');
+
+    -- Update changed records in DimCustomer (current table)
+    UPDATE dim
+    SET
+        dim.CustomerName = stg.CustomerName,
+        dim.Address = stg.Address
+    FROM DimCustomer dim
+    INNER JOIN StgCustomer stg
+        ON dim.CustomerID = stg.CustomerID
+    WHERE
+        ISNULL(dim.CustomerName, '') <> ISNULL(stg.CustomerName, '') OR
+        ISNULL(dim.Address, '') <> ISNULL(stg.Address, '');
+
+    -- Insert new customers from the Staging table
+    INSERT INTO DimCustomer (CustomerID, CustomerName, Address)
+    SELECT stg.CustomerID, stg.CustomerName, stg.Address
+    FROM StgCustomer stg
+    LEFT JOIN DimCustomer dim
+        ON stg.CustomerID = dim.CustomerID
+    WHERE dim.CustomerID IS NULL;
+END
+GO
