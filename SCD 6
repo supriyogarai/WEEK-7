@@ -1,0 +1,74 @@
+CREATE PROCEDURE usp_SCD6_UpdateCustomer
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- 1. Update "closed" records: if Address changes, set EndDate and IsCurrent
+    UPDATE DimCustomer
+    SET 
+        EndDate = GETDATE(),
+        IsCurrent = 0
+    FROM DimCustomer dc
+    INNER JOIN StgCustomer stg
+        ON dc.CustomerID = stg.CustomerID
+    WHERE
+        dc.IsCurrent = 1 AND
+        ISNULL(dc.CurrentAddress, '') <> ISNULL(stg.CurrentAddress, '');
+
+    -- 2. Insert new versioned record for changed data (Type 2 & 3 logic)
+    INSERT INTO DimCustomer (
+        CustomerID,
+        CurrentAddress,
+        PreviousAddress,
+        StartDate,
+        EndDate,
+        IsCurrent
+    )
+    SELECT
+        stg.CustomerID,
+        stg.CurrentAddress,
+        dc.CurrentAddress,         -- set PreviousAddress as prior value
+        GETDATE(),
+        '9999-12-31',              -- open-ended (current)
+        1
+    FROM StgCustomer stg
+    INNER JOIN DimCustomer dc
+        ON stg.CustomerID = dc.CustomerID AND dc.IsCurrent = 0
+    WHERE
+        NOT EXISTS (
+            SELECT 1 FROM DimCustomer exist
+            WHERE exist.CustomerID = stg.CustomerID AND exist.IsCurrent = 1
+        )
+    UNION
+    -- For records with address changed
+    SELECT
+        stg.CustomerID,
+        stg.CurrentAddress,
+        dc.CurrentAddress,
+        GETDATE(),
+        '9999-12-31',
+        1
+    FROM StgCustomer stg
+    INNER JOIN DimCustomer dc
+        ON stg.CustomerID = dc.CustomerID AND dc.IsCurrent = 1
+    WHERE
+        ISNULL(dc.CurrentAddress, '') <> ISNULL(stg.CurrentAddress, '');
+
+    -- 3. Insert brand new customers (not in DimCustomer)
+    INSERT INTO DimCustomer (
+        CustomerID, CurrentAddress, PreviousAddress, StartDate, EndDate, IsCurrent
+    )
+    SELECT
+        stg.CustomerID,
+        stg.CurrentAddress,
+        NULL,          -- No previous address for new customers
+        GETDATE(),
+        '9999-12-31',
+        1
+    FROM StgCustomer stg
+    LEFT JOIN DimCustomer dc
+        ON stg.CustomerID = dc.CustomerID
+    WHERE dc.CustomerID IS NULL;
+
+END
+GO
